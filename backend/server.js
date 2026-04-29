@@ -19,7 +19,9 @@ const allowedOrigins = [
   'http://localhost:3001',
   'https://crm.kairosstudio.in',
   'https://crm.kairosstudio.in/',
-  'https://crm.kairosstudio.in/gallery'
+  'https://crm.kairosstudio.in/gallery',
+  'https://crm.kairos.com',
+  'https://crm.kairos.com/'
 ];
 
 app.use(
