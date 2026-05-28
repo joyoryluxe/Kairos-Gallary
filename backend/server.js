@@ -14,32 +14,46 @@ const app = express();
 connectDB();
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
+// CORS origin whitelist — only base origins (no paths), CORS spec ignores paths
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'https://crm.kairosstudio.in',
-  'https://crm.kairosstudio.in/',
-  'https://crm.kairosstudio.in/gallery',
-  'https://crm.kairos.com',
-  'https://crm.kairos.com/'
+  'https://www.kairosstudio.in',
+  'https://kairosstudio.in',
 ];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      // Allow requests with no origin (like mobile apps or curl requests)
-      if (!origin) return callback(null, true);
-      if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.indexOf(origin + '/') !== -1) {
-        callback(null, true);
-      } else {
-        callback(new Error('Not allowed by CORS'));
-      }
-    },
-    credentials: true,
-    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-    allowedHeaders: ['Content-Type', 'Authorization'],
-  })
-);
+const corsOptions = {
+  origin: (origin, callback) => {
+    // Allow requests with no origin (mobile apps, curl, Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    // Strip trailing slash before checking
+    const normalizedOrigin = origin.replace(/\/$/, '');
+    if (allowedOrigins.includes(normalizedOrigin)) {
+      callback(null, true);
+    } else {
+      console.warn(`CORS blocked origin: ${origin}`);
+      callback(new Error(`CORS policy: origin '${origin}' not allowed`));
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: [
+    'Content-Type',
+    'Authorization',
+    'X-Requested-With',
+    'Accept',
+    'Origin',
+    'multipart/form-data',
+  ],
+  optionsSuccessStatus: 204, // Some legacy browsers choke on 200 for OPTIONS
+};
+
+// ✅ Handle preflight (OPTIONS) requests BEFORE all other middleware
+app.options('*', cors(corsOptions));
+
+// Apply CORS to all routes
+app.use(cors(corsOptions));
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
