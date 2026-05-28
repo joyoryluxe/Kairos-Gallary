@@ -14,48 +14,43 @@ const app = express();
 connectDB();
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
-// CORS origin whitelist — only base origins (no paths), CORS spec ignores paths
 const allowedOrigins = [
   'http://localhost:3000',
   'http://localhost:3001',
   'https://crm.kairosstudio.in',
-  'https://www.kairosstudio.in',
-  'https://kairosstudio.in',
+  'https://crm.kairos.com',
 ];
 
+// Helper to check if an origin is allowed (strips trailing slashes for comparison)
+const isOriginAllowed = (origin) => {
+  if (!origin) return true; // Allow requests with no origin (mobile apps, curl, etc.)
+  const cleanOrigin = origin.replace(/\/+$/, ''); // strip trailing slashes
+  return allowedOrigins.some((o) => o.replace(/\/+$/, '') === cleanOrigin);
+};
+
+// CORS configuration
 const corsOptions = {
   origin: (origin, callback) => {
-    // Allow requests with no origin (mobile apps, curl, Postman, server-to-server)
-    if (!origin) return callback(null, true);
-    // Strip trailing slash before checking
-    const normalizedOrigin = origin.replace(/\/$/, '');
-    if (allowedOrigins.includes(normalizedOrigin)) {
+    if (isOriginAllowed(origin)) {
       callback(null, true);
     } else {
-      console.warn(`CORS blocked origin: ${origin}`);
-      callback(new Error(`CORS policy: origin '${origin}' not allowed`));
+      callback(new Error('Not allowed by CORS'));
     }
   },
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
-  allowedHeaders: [
-    'Content-Type',
-    'Authorization',
-    'X-Requested-With',
-    'Accept',
-    'Origin',
-    'multipart/form-data',
-  ],
-  optionsSuccessStatus: 204, // Some legacy browsers choke on 200 for OPTIONS
+  allowedHeaders: ['Content-Type', 'Authorization'],
 };
 
-// ✅ Handle preflight (OPTIONS) requests BEFORE all other middleware
+// Apply CORS middleware
+app.use(cors(corsOptions));
+
+// Explicitly handle ALL preflight OPTIONS requests — this ensures the browser
+// always gets proper CORS headers back, even before auth/multer middleware runs.
 app.options('*', cors(corsOptions));
 
-// Apply CORS to all routes
-app.use(cors(corsOptions));
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ extended: true, limit: '50mb' }));
 
 // ─── Health check & Status ──────────────────────────────────────────────────
 app.get('/', (req, res) => {
@@ -63,15 +58,6 @@ app.get('/', (req, res) => {
     success: true,
     message: '📸 Kairos Photography Gallery API is running.',
     version: '1.0.0',
-    timestamp: new Date().toISOString(),
-  });
-});
-
-app.get('/', (req, res) => {
-  res.status(200).json({
-    status: 'UP',
-    message: 'Server is healthy',
-    uptime: `${Math.floor(process.uptime())}s`,
     timestamp: new Date().toISOString(),
   });
 });
@@ -93,6 +79,16 @@ app.use((req, res) => {
 // ─── Global error handler ──────────────────────────────────────────────────────
 app.use((err, req, res, next) => {
   console.error('Global Error:', err.stack);
+
+  // Ensure CORS headers are present even on error responses.
+  // Without this, if multer/auth throws, the browser sees no CORS headers
+  // and reports a misleading "blocked by CORS policy" error.
+  const origin = req.headers.origin;
+  if (isOriginAllowed(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+
   res.status(err.status || 500).json({
     success: false,
     message: err.message || 'Internal Server Error',
