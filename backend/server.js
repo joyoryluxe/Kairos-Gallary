@@ -47,7 +47,7 @@ app.use(cors(corsOptions));
 
 // Explicitly handle ALL preflight OPTIONS requests — this ensures the browser
 // always gets proper CORS headers back, even before auth/multer middleware runs.
-app.options('*', cors(corsOptions));
+app.options('/(.*)', cors(corsOptions));
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ extended: true, limit: '50mb' }));
