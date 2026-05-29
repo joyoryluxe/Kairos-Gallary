@@ -3,6 +3,7 @@ const Photo = require('../models/Photo');
 const { generateClientId, generatePassword, getExpiryDate, generatePhotoId } = require('../utils/generateCredentials');
 const { cloudinary } = require('../config/cloudinary');
 const sharp = require('sharp');
+sharp.cache(false); // Disable sharp caching to prevent memory leaks on large batch uploads
 
 // Helper function to upload image buffer to Cloudinary
 const uploadToCloudinary = (buffer, options) => {
