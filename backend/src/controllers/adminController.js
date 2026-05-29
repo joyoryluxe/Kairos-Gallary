@@ -28,52 +28,51 @@ const uploadPhotos = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No files uploaded.' });
     }
 
-    const photos = await Promise.all(
-      req.files.map(async (file) => {
-        const originalName = file.originalname;
-        const lastDotIndex = originalName.lastIndexOf('.');
-        const baseName = lastDotIndex !== -1 ? originalName.substring(0, lastDotIndex) : originalName;
-        // Sanitize name to avoid Cloudinary character issues
-        const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9_-]/g, '_');
-        const newOriginalName = `${baseName}.webp`;
+    const photos = [];
+    for (const file of req.files) {
+      const originalName = file.originalname;
+      const lastDotIndex = originalName.lastIndexOf('.');
+      const baseName = lastDotIndex !== -1 ? originalName.substring(0, lastDotIndex) : originalName;
+      // Sanitize name to avoid Cloudinary character issues
+      const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-        // Process buffer using sharp to compress and convert to WebP
-        const processedBuffer = await sharp(file.buffer)
-          .webp({
-            quality: 85,
-            effort: 6,
-            smartSubsample: true,
-          })
-          .toBuffer();
+      // Process buffer using sharp to compress and convert to WebP
+      const processedBuffer = await sharp(file.buffer)
+        .webp({
+          quality: 80, // Optimized for mass upload
+          effort: 4,   // Faster processing for many images
+          smartSubsample: true,
+        })
+        .toBuffer();
 
-        const metadata = await sharp(processedBuffer).metadata();
-        const folder = process.env.CLOUDINARY_FOLDER || 'kairos_gallery';
-        const uniquePublicId = `${sanitizedBaseName}_${Date.now()}`;
+      const metadata = await sharp(processedBuffer).metadata();
+      const folder = process.env.CLOUDINARY_FOLDER || 'kairos_gallery';
+      const uniquePublicId = `${sanitizedBaseName}_${Date.now()}`;
 
-        const uploadOptions = {
-          folder,
-          public_id: uniquePublicId,
-          format: 'webp',
-          resource_type: 'image',
-        };
+      const uploadOptions = {
+        folder,
+        public_id: uniquePublicId,
+        format: 'webp',
+        resource_type: 'image',
+      };
 
-        const result = await uploadToCloudinary(processedBuffer, uploadOptions);
+      const result = await uploadToCloudinary(processedBuffer, uploadOptions);
 
-        return await Photo.create({
-          filename: newOriginalName,
-          originalName: newOriginalName,
-          url: result.secure_url,
-          thumbnailUrl: result.secure_url.replace('/upload/', '/upload/w_400,h_400,c_fill,q_auto/'),
-          publicId: result.public_id,
-          size: processedBuffer.length,
-          width: metadata.width || result.width || null,
-          height: metadata.height || result.height || null,
-          format: 'webp',
-          uploadedBy: req.admin._id,
-          displayId: generatePhotoId(),
-        });
-      })
-    );
+      const photoDoc = await Photo.create({
+        filename: originalName, // keeping original name and extension
+        originalName: originalName, // keeping original name and extension
+        url: result.secure_url,
+        thumbnailUrl: result.secure_url.replace('/upload/', '/upload/w_400,h_400,c_fill,q_auto/'),
+        publicId: result.public_id,
+        size: processedBuffer.length,
+        width: metadata.width || result.width || null,
+        height: metadata.height || result.height || null,
+        format: 'webp',
+        uploadedBy: req.admin._id,
+        displayId: generatePhotoId(),
+      });
+      photos.push(photoDoc);
+    }
 
     res.status(201).json({
       success: true,
