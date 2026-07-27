@@ -49,8 +49,8 @@ app.use(cors(corsOptions));
 // always gets proper CORS headers back, even before auth/multer middleware runs.
 app.options(/.*/, cors(corsOptions));
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ extended: true, limit: '50mb' }));
+app.use(express.json({ limit: '500mb' }));
+app.use(express.urlencoded({ extended: true, limit: '500mb' }));
 
 // ─── Health check & Status ──────────────────────────────────────────────────
 app.get('/', (req, res) => {
@@ -97,6 +97,11 @@ app.use((err, req, res, next) => {
 
 // ─── Start server ─────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
+const server = app.listen(PORT, () => {
   console.log(`🚀 Kairos API running on http://localhost:${PORT}`);
 });
+
+// Extend timeouts so large batch uploads (100+ photos) don't get cut off
+// by Render's default 30s idle timeout or Node's default keepAliveTimeout.
+server.keepAliveTimeout = 120 * 1000;  // 2 minutes
+server.headersTimeout  = 125 * 1000;  // must be > keepAliveTimeout

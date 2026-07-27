@@ -24,7 +24,7 @@ router.use(protectAdmin);
 router.get('/dashboard', getDashboardStats);
 
 // Photo management
-router.post('/photos/upload', upload.array('photos', 100), uploadPhotos);
+router.post('/photos/upload', upload.array('photos', 50), uploadPhotos);
 router.get('/photos', getAllPhotos);
 router.delete('/photos/:id', deletePhoto);
 

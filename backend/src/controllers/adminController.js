@@ -29,56 +29,76 @@ const uploadPhotos = async (req, res) => {
       return res.status(400).json({ success: false, message: 'No files uploaded.' });
     }
 
-    const photos = [];
-    for (const file of req.files) {
-      const originalName = file.originalname;
-      const lastDotIndex = originalName.lastIndexOf('.');
-      const baseName = lastDotIndex !== -1 ? originalName.substring(0, lastDotIndex) : originalName;
-      // Sanitize name to avoid Cloudinary character issues
-      const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9_-]/g, '_');
+    // Process all files in this batch concurrently (Promise.all)
+    // The frontend batches in groups of 10, so this handles each batch in parallel
+    // for maximum speed without overwhelming Cloudinary or the server.
+    const results = await Promise.all(
+      req.files.map(async (file) => {
+        const originalName = file.originalname;
+        const lastDotIndex = originalName.lastIndexOf('.');
+        const baseName = lastDotIndex !== -1 ? originalName.substring(0, lastDotIndex) : originalName;
+        // Sanitize name to avoid Cloudinary character issues
+        const sanitizedBaseName = baseName.replace(/[^a-zA-Z0-9_-]/g, '_');
 
-      // Process buffer using sharp to compress and convert to WebP
-      const processedBuffer = await sharp(file.buffer)
-        .webp({
-          quality: 80, // Optimized for mass upload
-          effort: 4,   // Faster processing for many images
-          smartSubsample: true,
-        })
-        .toBuffer();
+        // Process buffer using sharp to compress and convert to WebP
+        let processedBuffer = await sharp(file.buffer)
+          .webp({
+            quality: 80, // Optimized for mass upload
+            effort: 4,   // Faster processing for many images
+            smartSubsample: true,
+          })
+          .toBuffer();
 
-      const metadata = await sharp(processedBuffer).metadata();
-      const folder = process.env.CLOUDINARY_FOLDER || 'kairos_gallery';
-      const uniquePublicId = `${sanitizedBaseName}_${Date.now()}`;
+        // Cloudinary free tier rejects files > 10MB.
+        // If our WebP is still too large, progressively recompress with lower quality.
+        const CLOUDINARY_MAX_BYTES = 9.5 * 1024 * 1024; // 9.5MB safety margin
+        const fallbackQualities = [70, 55, 40];
+        let qualityIndex = 0;
+        while (processedBuffer.length > CLOUDINARY_MAX_BYTES && qualityIndex < fallbackQualities.length) {
+          const q = fallbackQualities[qualityIndex];
+          console.log(`[Recompress] ${originalName} is ${(processedBuffer.length / 1024 / 1024).toFixed(2)}MB — retrying at quality ${q}`);
+          processedBuffer = await sharp(file.buffer)
+            .webp({ quality: q, effort: 4, smartSubsample: true })
+            .toBuffer();
+          qualityIndex++;
+        }
 
-      const uploadOptions = {
-        folder,
-        public_id: uniquePublicId,
-        format: 'webp',
-        resource_type: 'image',
-      };
+        const metadata = await sharp(processedBuffer).metadata();
+        const folder = process.env.CLOUDINARY_FOLDER || 'kairos_gallery';
+        const uniquePublicId = `${sanitizedBaseName}_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
-      const result = await uploadToCloudinary(processedBuffer, uploadOptions);
+        const uploadOptions = {
+          folder,
+          public_id: uniquePublicId,
+          format: 'webp',
+          resource_type: 'image',
+        };
 
-      const photoDoc = await Photo.create({
-        filename: originalName, // keeping original name and extension
-        originalName: originalName, // keeping original name and extension
-        url: result.secure_url,
-        thumbnailUrl: result.secure_url.replace('/upload/', '/upload/w_400,h_400,c_fill,q_auto/'),
-        publicId: result.public_id,
-        size: processedBuffer.length,
-        width: metadata.width || result.width || null,
-        height: metadata.height || result.height || null,
-        format: 'webp',
-        uploadedBy: req.admin._id,
-        displayId: generatePhotoId(),
-      });
-      photos.push(photoDoc);
-    }
+        const result = await uploadToCloudinary(processedBuffer, uploadOptions);
+
+
+        const photoDoc = await Photo.create({
+          filename: originalName,
+          originalName: originalName,
+          url: result.secure_url,
+          thumbnailUrl: result.secure_url.replace('/upload/', '/upload/w_400,h_400,c_fill,q_auto/'),
+          publicId: result.public_id,
+          size: processedBuffer.length,
+          width: metadata.width || result.width || null,
+          height: metadata.height || result.height || null,
+          format: 'webp',
+          uploadedBy: req.admin._id,
+          displayId: generatePhotoId(),
+        });
+
+        return photoDoc;
+      })
+    );
 
     res.status(201).json({
       success: true,
-      message: `${photos.length} photo(s) uploaded successfully.`,
-      data: photos,
+      message: `${results.length} photo(s) uploaded successfully.`,
+      data: results,
     });
   } catch (error) {
     console.error('Upload Photos Error:', error);
