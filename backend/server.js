@@ -19,6 +19,7 @@ const allowedOrigins = [
   'http://localhost:3001',
   'https://crm.kairosstudio.in',
   'https://crm.kairos.com',
+  "https://kairos-gallary.onrender.com"
 ];
 
 // Helper to check if an origin is allowed (strips trailing slashes for comparison)
@@ -104,4 +105,4 @@ const server = app.listen(PORT, () => {
 // Extend timeouts so large batch uploads (100+ photos) don't get cut off
 // by Render's default 30s idle timeout or Node's default keepAliveTimeout.
 server.keepAliveTimeout = 120 * 1000;  // 2 minutes
-server.headersTimeout  = 125 * 1000;  // must be > keepAliveTimeout
+server.headersTimeout = 125 * 1000;  // must be > keepAliveTimeout

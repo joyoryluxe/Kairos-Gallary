@@ -15,6 +15,8 @@ const {
   deleteGallery,
   getClientFavourites,
   getDashboardStats,
+  getUploadSignatures,
+  registerPhoto,
 } = require('../controllers/adminController');
 
 // All admin routes protected
@@ -23,7 +25,12 @@ router.use(protectAdmin);
 // Dashboard
 router.get('/dashboard', getDashboardStats);
 
-// Photo management
+// ── Photo management ──────────────────────────────────────────────────────────
+// Direct upload support: browser → Cloudinary (server only handles tiny JSON)
+router.get('/photos/upload-signature', getUploadSignatures);  // get signed tokens
+router.post('/photos/register', registerPhoto);               // save metadata after upload
+
+// Legacy server-proxied upload (kept as fallback)
 router.post('/photos/upload', upload.array('photos', 50), uploadPhotos);
 router.get('/photos', getAllPhotos);
 router.delete('/photos/:id', deletePhoto);

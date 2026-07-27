@@ -413,6 +413,91 @@ const getDashboardStats = async (req, res) => {
   }
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// DIRECT UPLOAD SUPPORT — Browser uploads directly to Cloudinary
+// Render never handles file bytes; only tiny JSON flows through the server.
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * GET /api/admin/photos/upload-signature?count=N
+ * Returns N pre-signed Cloudinary upload tokens.
+ * The browser uses these to POST directly to api.cloudinary.com without
+ * routing any file data through this server.
+ */
+const getUploadSignatures = async (req, res) => {
+  try {
+    const count = Math.min(parseInt(req.query.count) || 1, 100); // hard cap at 100 per call
+    const folder = process.env.CLOUDINARY_FOLDER || 'kairos_gallery';
+    const timestamp = Math.round(Date.now() / 1000); // same timestamp is fine — valid 1hr
+
+    const signatures = [];
+    for (let i = 0; i < count; i++) {
+      // unique public_id: timestamp + index + random suffix
+      const publicId = `photo_${Date.now()}_${i}_${Math.random().toString(36).slice(2, 7)}`;
+      const paramsToSign = { folder, public_id: publicId, timestamp };
+      const signature = cloudinary.utils.api_sign_request(
+        paramsToSign,
+        process.env.CLOUDINARY_API_SECRET
+      );
+      signatures.push({
+        signature,
+        timestamp,
+        folder,
+        public_id: publicId,
+        api_key: process.env.CLOUDINARY_API_KEY,
+        cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+      });
+    }
+
+    res.json({ success: true, data: signatures });
+  } catch (error) {
+    console.error('Get Upload Signatures Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * POST /api/admin/photos/register
+ * Called by the browser AFTER a successful direct Cloudinary upload.
+ * Receives the Cloudinary result metadata (URL, publicId, dimensions, etc.)
+ * and persists a Photo document to MongoDB.
+ * File data NEVER touches this server.
+ */
+const registerPhoto = async (req, res) => {
+  try {
+    const { originalName, url, publicId, width, height, size, format } = req.body;
+
+    if (!originalName || !url || !publicId) {
+      return res.status(400).json({
+        success: false,
+        message: 'originalName, url and publicId are required.',
+      });
+    }
+
+    const thumbnailUrl = url.replace('/upload/', '/upload/w_400,h_400,c_fill,q_auto/');
+
+    const photoDoc = await Photo.create({
+      filename: originalName,
+      originalName,
+      url,
+      thumbnailUrl,
+      publicId,
+      size: size || 0,
+      width: width || null,
+      height: height || null,
+      format: format || 'jpg',
+      uploadedBy: req.admin._id,
+      displayId: generatePhotoId(),
+    });
+
+    res.status(201).json({ success: true, data: photoDoc });
+  } catch (error) {
+    console.error('Register Photo Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
 module.exports = {
   uploadPhotos,
   getAllPhotos,
@@ -426,4 +511,7 @@ module.exports = {
   deleteGallery,
   getClientFavourites,
   getDashboardStats,
+  // Direct upload support (browser → Cloudinary, server only handles JSON)
+  getUploadSignatures,
+  registerPhoto,
 };
