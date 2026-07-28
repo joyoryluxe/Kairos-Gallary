@@ -11,6 +11,8 @@ const {
   getGalleryById,
   extendGalleryAccess,
   updateGalleryPhotos,
+  addGalleryPhotos,
+  removeGalleryPhotos,
   updateGallery,
   deleteGallery,
   getClientFavourites,
@@ -43,6 +45,8 @@ router.patch('/galleries/:id', updateGallery);
 router.delete('/galleries/:id', deleteGallery);
 router.patch('/galleries/:id/extend', extendGalleryAccess);
 router.patch('/galleries/:id/update-photos', updateGalleryPhotos);
+router.patch('/galleries/:id/add-photos', addGalleryPhotos);
+router.patch('/galleries/:id/remove-photos', removeGalleryPhotos);
 router.get('/galleries/:id/favourites', getClientFavourites);
 
 module.exports = router;

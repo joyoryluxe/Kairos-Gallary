@@ -305,6 +305,89 @@ const updateGalleryPhotos = async (req, res) => {
 };
 
 /**
+ * PATCH /api/admin/galleries/:id/add-photos
+ */
+const addGalleryPhotos = async (req, res) => {
+  try {
+    const { photoIds } = req.body;
+    if (!Array.isArray(photoIds) || photoIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'photoIds array is required.' });
+    }
+
+    const gallery = await Gallery.findOne({ _id: req.params.id, createdBy: req.admin._id });
+    if (!gallery) return res.status(404).json({ success: false, message: 'Gallery not found.' });
+
+    const photos = await Photo.find({ _id: { $in: photoIds }, uploadedBy: req.admin._id });
+    if (photos.length === 0) {
+      return res.status(400).json({ success: false, message: 'No valid photos found to add.' });
+    }
+
+    const existingPhotoSet = new Set(gallery.photos.map((p) => p.toString()));
+    let addedCount = 0;
+    for (const p of photos) {
+      const pIdStr = p._id.toString();
+      if (!existingPhotoSet.has(pIdStr)) {
+        gallery.photos.push(p._id);
+        existingPhotoSet.add(pIdStr);
+        addedCount++;
+      }
+    }
+
+    if (!gallery.coverPhoto && gallery.photos.length > 0) {
+      gallery.coverPhoto = gallery.photos[0];
+    }
+
+    await gallery.save();
+
+    res.status(200).json({
+      success: true,
+      message: `${addedCount} photo(s) added to gallery.`,
+      data: { totalPhotos: gallery.photos.length, addedCount },
+    });
+  } catch (error) {
+    console.error('Add Gallery Photos Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
+ * PATCH /api/admin/galleries/:id/remove-photos
+ */
+const removeGalleryPhotos = async (req, res) => {
+  try {
+    const { photoIds } = req.body;
+    if (!Array.isArray(photoIds) || photoIds.length === 0) {
+      return res.status(400).json({ success: false, message: 'photoIds array is required.' });
+    }
+
+    const gallery = await Gallery.findOne({ _id: req.params.id, createdBy: req.admin._id });
+    if (!gallery) return res.status(404).json({ success: false, message: 'Gallery not found.' });
+
+    const removeSet = new Set(photoIds.map((id) => id.toString()));
+
+    gallery.photos = gallery.photos.filter((p) => !removeSet.has(p.toString()));
+    gallery.clientFavourites = gallery.clientFavourites.filter(
+      (fav) => fav.photo && !removeSet.has(fav.photo.toString())
+    );
+
+    if (gallery.coverPhoto && removeSet.has(gallery.coverPhoto.toString())) {
+      gallery.coverPhoto = gallery.photos.length > 0 ? gallery.photos[0] : null;
+    }
+
+    await gallery.save();
+
+    res.status(200).json({
+      success: true,
+      message: `${photoIds.length} photo(s) removed from gallery.`,
+      data: { totalPhotos: gallery.photos.length },
+    });
+  } catch (error) {
+    console.error('Remove Gallery Photos Error:', error);
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+/**
  * PATCH /api/admin/galleries/:id
  */
 const updateGallery = async (req, res) => {
@@ -507,6 +590,8 @@ module.exports = {
   getGalleryById,
   extendGalleryAccess,
   updateGalleryPhotos,
+  addGalleryPhotos,
+  removeGalleryPhotos,
   updateGallery,
   deleteGallery,
   getClientFavourites,
